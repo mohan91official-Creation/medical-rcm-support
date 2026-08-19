@@ -1,0 +1,32 @@
+{
+  "reviewed_on": "2026-08-19",
+  "sources": [
+    {
+      "file": "sources/Claim Adjustment Reason Codes.md",
+      "sha256": "9D3411D2F25929B3C8923CFD6365A6160C264D9C7635CFE9B798FD7A8B7CF8E9",
+      "classification": "secondary-x12-snapshot",
+      "snapshot_date": "2024-11-22",
+      "canonical_authority": "https://x12.org/codes/claim-adjustment-reason-codes",
+      "production_note": "Verify the current X12 code set. CARC 16 requires at least one companion remark code."
+    },
+    {
+      "file": "sources/Remittance Advice Remarks Codes.md",
+      "sha256": "65B6308C247E81E34012C8541672B5129BF5D034C0E32068B07C08D54E1D4FE7",
+      "classification": "secondary-x12-snapshot",
+      "snapshot_date": "2024-11-22",
+      "canonical_authority": "https://x12.org/codes/remittance-advice-remark-codes",
+      "production_note": "Verify the current X12 code set and the actual payer remittance."
+    },
+    {
+      "file": "sources/LCD - Cardiac Computed Tomography (CCT) and Coronary Computed Tomography Angiography (CCTA) (L33947).pdf",
+      "sha256": "888EFDCF54C61DB6265DB8460E3E647299F4BECAA853AFAD980F09BE666C6863",
+      "classification": "cms-local-coverage-determination",
+      "lcd_id": "L33947",
+      "version": 25,
+      "effective_date": "2025-10-09",
+      "jurisdiction": "CGS J15 - Kentucky and Ohio",
+      "canonical_authority": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33947&ver=25",
+      "production_note": "Do not generalize to other jurisdictions or payers. Billing codes are maintained in related article A56451."
+    }
+  ]
+}

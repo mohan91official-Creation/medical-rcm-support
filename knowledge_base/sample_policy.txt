@@ -1,0 +1,20 @@
+# RCM Support Knowledge Base
+
+## CO-16 / missing information
+CO-16 means a claim or service lacks information needed for adjudication. Check the remittance RARC,
+claim form fields, subscriber/member data, rendering and referring provider identifiers, diagnosis
+pointers, modifiers, attachments, and payer companion guide. Correct and resubmit or appeal according
+to payer rules. Never infer the missing field from CO-16 alone.
+
+## Eligibility and authorization
+Verify coverage for the date of service, patient/subscriber relationship, plan benefits, referral and
+prior-authorization requirements, authorization number, approved units, dates, and servicing provider.
+Retain payer confirmation and follow contractual timely-filing and appeal requirements.
+
+## Coding and compliance
+Use current official ICD-10-CM, CPT, HCPCS, NCCI, CMS, and payer guidance. Do not select or alter a code
+solely to obtain payment. Escalate ambiguous coding to a qualified coder or compliance professional.
+
+## Privacy and communications
+Apply minimum-necessary access, verify the recipient, avoid unnecessary identifiers in email, and use an
+approved secure channel for PHI. This reference system does not make coverage or medical-necessity decisions.

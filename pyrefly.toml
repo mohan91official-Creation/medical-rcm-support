@@ -1,0 +1,2 @@
+# Keep editor diagnostics aligned with the project's isolated environment.
+python-interpreter-path = ".venv/Scripts/python.exe"

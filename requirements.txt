@@ -1,0 +1,17 @@
+# Compatible release ranges; pin exact versions in your deployment lockfile.
+crewai>=1.15,<2
+langchain>=1.1,<2
+langchain-core>=1.1,<2
+langchain-openai>=1.1,<2
+langchain-nvidia-ai-endpoints>=1.0,<2
+langsmith>=0.4,<1
+pydantic>=2.11,<3
+pydantic-settings>=2.10,<3
+faiss-cpu>=1.11,<2
+numpy>=2,<3
+httpx>=0.28,<1
+python-dotenv>=1.1,<2
+gspread>=6.2,<7
+presidio-analyzer>=2.2,<3
+spacy>=3.8,<4
+pypdf>=6,<7
