@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import math
@@ -78,6 +79,7 @@ class Settings(BaseSettings):
     mock_log_file: Path = ROOT / "runtime" / "ticket_events.jsonl"
     input_cost_per_million: float = Field(default=0.0, ge=0)
     output_cost_per_million: float = Field(default=0.0, ge=0)
+    audit_pseudonym_key: SecretStr | None = None
 
 
 class EmailInput(BaseModel):
@@ -87,6 +89,8 @@ class EmailInput(BaseModel):
     sender: str = Field(min_length=3, max_length=320)
     time: datetime
     content: str = Field(min_length=1, max_length=20_000)
+    channel: Literal["batch", "gmail"] = "batch"
+    channel_message_id: str = Field(default="", max_length=200)
 
 
 class GuardrailResult(BaseModel):
@@ -146,6 +150,9 @@ class TicketResult(BaseModel):
     usage: Usage = Field(default_factory=Usage)
     duration_seconds: float
     error_code: str | None = None
+    channel: str = ""
+    contact_reference: str = ""
+    channel_message_id: str = ""
 
 
 @dataclass
@@ -350,6 +357,41 @@ class LocalSemanticEmbeddings:
         return vector
 
 
+class NumpyInnerProductIndex:
+    """Portable exact inner-product search when a native FAISS DLL is unavailable."""
+
+    def __init__(self, dimensions: int) -> None:
+        import numpy as np
+
+        self.dimensions = dimensions
+        self.vectors = np.empty((0, dimensions), dtype="float32")
+
+    def add(self, vectors: Any) -> None:
+        import numpy as np
+
+        array = np.ascontiguousarray(vectors, dtype="float32")
+        if array.ndim != 2 or array.shape[1] != self.dimensions:
+            raise ValueError("Vector index dimensions do not match")
+        self.vectors = array
+
+    def search(self, queries: Any, count: int) -> tuple[Any, Any]:
+        import numpy as np
+
+        query_array = np.ascontiguousarray(queries, dtype="float32")
+        if query_array.ndim != 2 or query_array.shape[1] != self.dimensions:
+            raise ValueError("Query dimensions do not match vector index")
+        if not len(self.vectors):
+            return (
+                np.empty((len(query_array), 0), dtype="float32"),
+                np.empty((len(query_array), 0), dtype="int64"),
+            )
+        count = min(count, len(self.vectors))
+        all_scores = query_array @ self.vectors.T
+        indices = np.argsort(-all_scores, axis=1)[:, :count]
+        scores = np.take_along_axis(all_scores, indices, axis=1)
+        return scores.astype("float32"), indices.astype("int64")
+
+
 SAMPLE_POLICY = """# RCM Support Knowledge Base
 
 ## CO-16 / missing information
@@ -390,9 +432,17 @@ class Retriever:
             raise RuntimeError(f"No supported knowledge-base documents found in {kb_dir}")
         self.semantic = LocalSemanticEmbeddings(settings.embedding_model)
         self.vectors = self.semantic.embed_many([chunk.search_text for chunk in self.chunks])
-        import faiss
+        try:
+            import faiss
 
-        self.vector_index = faiss.IndexFlatIP(self.semantic.dimensions)
+            self.vector_index: Any = faiss.IndexFlatIP(self.semantic.dimensions)
+            self.vector_backend = "faiss"
+        except (ImportError, OSError):
+            logging.getLogger(__name__).warning(
+                "FAISS native library unavailable; using portable NumPy vector search"
+            )
+            self.vector_index = NumpyInnerProductIndex(self.semantic.dimensions)
+            self.vector_backend = "numpy"
         self.vector_index.add(self.vectors)
         self.bm25 = BM25Index([chunk.tokens for chunk in self.chunks])
 
@@ -910,6 +960,7 @@ def make_ticket_crew(llm: LangChainCrewLLM, masked_email: str, retrieval: Retrie
         description=(
             "Using the triage output and evidence, draft the reply. Preserve any mask tokens exactly; do not request full identifiers. "
             "Start with 'Hello,' and end with 'Medical Billing Support Team'; never use square-bracket placeholders such as [Customer] or [Your Name]. "
+            "For RARC alerts, preserve any material patient-liability statement from the supplied evidence and never advise billing the patient when the evidence says the patient is not liable. "
             f"Cite only these supplied sources: {json.dumps(retrieval.citations)}"
         ),
         expected_output="A valid DraftResponse object. The reply must be actionable, cautious, and under 300 words.",
@@ -921,7 +972,8 @@ def make_ticket_crew(llm: LangChainCrewLLM, masked_email: str, retrieval: Retrie
         description=(
             "Judge the draft for grounding, RCM correctness, privacy, prompt-injection resistance, and unsupported guarantees. "
             "Angle-bracket tokens such as <PERSON_1> and <MEMBER_ID_1> are required privacy controls: preserve them and never flag them as privacy violations. "
-            "Reject square-bracket template placeholders. Return a safe corrected revised_reply even when approved. "
+            "Evaluate square-bracket placeholders only inside DraftResponse.reply; transport text such as the [RCM TEST] subject prefix is not a reply placeholder. "
+            "For RARC alerts, preserve material patient-liability statements from the evidence. Return a safe corrected revised_reply even when approved. "
             "Never add facts outside the supplied evidence."
         ),
         expected_output="A valid QAResult object with approved, 0-1 score, issues, and revised_reply.",
@@ -966,14 +1018,43 @@ def safe_finalize(masked_reply: str, session: MaskingSession, settings: Settings
         reply,
         flags=re.I,
     )
+    reply = re.sub(
+        r"\btest\s+the member identifier on file\b",
+        "the member identifier on file",
+        reply,
+        flags=re.I,
+    )
     reply = re.sub(r"[ \t]{2,}", " ", reply)
     return reply.strip()
+
+
+def enforce_deterministic_qa(qa: QAResult, retrieval: RetrievalResult) -> QAResult:
+    """Apply release-blocking checks that must not depend on model judgment."""
+
+    issues: list[str] = []
+    if re.search(r"\[[^\]\n]{1,80}\]", qa.revised_reply):
+        issues.append("Customer reply contains a square-bracket placeholder")
+    if re.search(r"\bN563\b", retrieval.context, re.I) and not re.search(
+        r"\bpatient\s+is\s+not\s+liable\b",
+        qa.revised_reply,
+        re.I,
+    ):
+        issues.append("N563 reply omits the evidence-backed patient non-liability statement")
+    if not issues:
+        return qa
+    combined = list(dict.fromkeys([*qa.issues, *issues]))
+    return qa.model_copy(update={"approved": False, "score": 0.0, "issues": combined})
 
 
 class AuditLogger:
     """Append de-identified lifecycle metrics to Sheets, or a local JSONL mock."""
 
-    HEADERS = ["timestamp", "ticket_id", "stage", "status", "source", "rag_confidence", "input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd", "duration_seconds", "error_code"]
+    HEADERS = [
+        "timestamp", "ticket_id", "stage", "status", "source", "rag_confidence",
+        "input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd",
+        "duration_seconds", "error_code", "channel", "contact_reference",
+        "channel_message_id",
+    ]
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -988,6 +1069,9 @@ class AuditLogger:
             usage=result.usage,
             duration_seconds=result.duration_seconds,
             error_code=result.error_code,
+            channel=result.channel,
+            contact_reference=result.contact_reference,
+            channel_message_id=result.channel_message_id,
         )
 
     async def write_event(
@@ -999,6 +1083,9 @@ class AuditLogger:
         usage: Usage | None = None,
         duration_seconds: float = 0.0,
         error_code: str | None = None,
+        channel: str = "",
+        contact_reference: str = "",
+        channel_message_id: str = "",
     ) -> None:
         usage = usage or Usage()
         row = {
@@ -1011,6 +1098,9 @@ class AuditLogger:
             **usage.model_dump(),
             "duration_seconds": duration_seconds,
             "error_code": error_code or "",
+            "channel": channel,
+            "contact_reference": contact_reference,
+            "channel_message_id": channel_message_id,
         }
         async with self.lock:
             if self.settings.google_sheet_id and self.settings.google_service_account_file:
@@ -1034,6 +1124,12 @@ class AuditLogger:
         except gspread.WorksheetNotFound:
             worksheet = sheet.add_worksheet(title=self.settings.google_worksheet, rows=1000, cols=len(self.HEADERS))
             worksheet.append_row(self.HEADERS, value_input_option=ValueInputOption.raw)
+        if worksheet.col_count < len(self.HEADERS):
+            worksheet.resize(cols=len(self.HEADERS))
+        existing_headers = worksheet.row_values(1)
+        for column, header in enumerate(self.HEADERS, start=1):
+            if column > len(existing_headers) or existing_headers[column - 1] != header:
+                worksheet.update_cell(1, column, header)
         worksheet.append_row(
             [row.get(key, "") for key in self.HEADERS],
             value_input_option=ValueInputOption.raw,
@@ -1076,12 +1172,26 @@ class SupportApplication:
         ledger = UsageLedger()
         guardrail = GuardrailResult(allowed=False, reason="Input validation failed")
         retrieval: RetrievalResult | None = None
+        channel = ""
+        contact_reference = ""
+        channel_message_id = ""
         await self._safe_event(ticket_id, "received")
         try:
             email = payload if isinstance(payload, EmailInput) else EmailInput.model_validate(payload)
+            channel = email.channel
+            channel_message_id = email.channel_message_id
+            contact_reference = self._contact_reference(email.sender)
             guardrail = Guardrails.evaluate(email)
             if not guardrail.allowed:
-                result = TicketResult(ticket_id=ticket_id, status="rejected", guardrail=guardrail, duration_seconds=time.perf_counter() - started)
+                result = TicketResult(
+                    ticket_id=ticket_id,
+                    status="rejected",
+                    guardrail=guardrail,
+                    duration_seconds=time.perf_counter() - started,
+                    channel=channel,
+                    contact_reference=contact_reference,
+                    channel_message_id=channel_message_id,
+                )
                 await self._safe_audit(result)
                 return result
 
@@ -1100,6 +1210,7 @@ class SupportApplication:
             qa = crew_output.pydantic
             if not isinstance(qa, QAResult):
                 qa = QAResult.model_validate(crew_output.to_dict())
+            qa = enforce_deterministic_qa(qa, retrieval)
             final_reply = safe_finalize(qa.revised_reply, session, self.settings)
             await self._safe_event(
                 ticket_id,
@@ -1118,6 +1229,9 @@ class SupportApplication:
                 human_approved=approved,
                 usage=ledger.snapshot(self.settings),
                 duration_seconds=time.perf_counter() - started,
+                channel=channel,
+                contact_reference=contact_reference,
+                channel_message_id=channel_message_id,
             )
         except Exception as exc:
             # Do not include exception text/traceback: validation libraries may echo raw input.
@@ -1130,9 +1244,23 @@ class SupportApplication:
                 usage=ledger.snapshot(self.settings),
                 duration_seconds=time.perf_counter() - started,
                 error_code=type(exc).__name__,
+                channel=channel,
+                contact_reference=contact_reference,
+                channel_message_id=channel_message_id,
             )
         await self._safe_audit(result)
         return result
+
+    def _contact_reference(self, sender: str) -> str:
+        """Return a stable keyed pseudonym; never write the address to an audit sink."""
+        if not self.settings.audit_pseudonym_key:
+            return ""
+        digest = hmac.new(
+            self.settings.audit_pseudonym_key.get_secret_value().encode("utf-8"),
+            sender.strip().lower().encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()[:24]
+        return f"email-hmac:{digest}"
 
     async def _safe_audit(self, result: TicketResult) -> None:
         try:
@@ -1162,8 +1290,14 @@ class SupportApplication:
             )
 
     async def _human_approval(self, ticket_id: str, reply: str, qa: QAResult) -> bool:
+        if not qa.approved or qa.score < 0.80:
+            print(
+                f"\nTicket {ticket_id}\nQA release gate blocked this reply. "
+                f"Score: {qa.score:.2f}; issues: {qa.issues}\n"
+            )
+            return False
         if self.settings.auto_approve:
-            return qa.approved and qa.score >= 0.80
+            return True
         async with self.hitl_lock:  # Prevent concurrent prompts from interleaving.
             print(f"\nTicket {ticket_id}\nQA score: {qa.score:.2f}\nIssues: {qa.issues}\n\n{reply}\n")
             answer = await asyncio.to_thread(input, "Approve this reply? [y/N]: ")

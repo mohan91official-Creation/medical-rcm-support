@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import pytest
+import numpy as np
 
-from app import ROOT, Retriever, Settings
+from app import NumpyInnerProductIndex, ROOT, Retriever, Settings
 
 
 @pytest.fixture(scope="module")
@@ -31,3 +32,13 @@ def test_lcd_screening_query_prioritizes_policy_page(retriever: Retriever) -> No
     assert result.confidence >= 0.70
     assert result.citations[0].endswith("#page=7")
     assert not any("Claim Adjustment Reason Codes" in citation for citation in result.citations)
+
+
+def test_numpy_vector_fallback_returns_inner_product_order() -> None:
+    index = NumpyInnerProductIndex(2)
+    index.add(np.asarray([[1.0, 0.0], [0.0, 1.0], [0.8, 0.2]], dtype="float32"))
+
+    scores, indices = index.search(np.asarray([[1.0, 0.0]], dtype="float32"), 3)
+
+    assert indices.tolist() == [[0, 2, 1]]
+    assert scores[0, 0] == 1.0

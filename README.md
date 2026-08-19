@@ -9,6 +9,15 @@ Sheets lifecycle metrics.
 **Buildathon shortcuts:** [5-minute demo guide](DEMO_GUIDE.md) · [Security policy](SECURITY.md) ·
 [Automated quality gate](https://github.com/mohan91official-Creation/medical-rcm-support/actions/workflows/ci.yml)
 
+The optional `gmail_workflow.py` adapter supports a consent-driven live test using a dedicated Gmail
+inbox. It processes only unread messages with a configured subject prefix, blocks automated senders,
+requires application HITL approval plus a separate send confirmation, preserves the Gmail thread, and
+labels successfully handled messages.
+
+Audit sinks never store the customer email address. When `AUDIT_PSEUDONYM_KEY` is configured, they store
+a stable keyed HMAC contact reference and an opaque Gmail message ID so authorized operators can
+correlate events without exposing the address in Sheets.
+
 > **Important:** This project demonstrates engineering controls; it does not make a deployment HIPAA
 > compliant and is not legal, medical, coding, or reimbursement advice. A covered entity or business
 > associate still needs contracts/BAAs, a documented risk analysis, policies, workforce training,
@@ -78,6 +87,8 @@ or traces. The raw-to-token mapping remains in a ticket-local in-memory object a
 - Local `en_core_web_lg` semantic vectors indexed by FAISS, exact Okapi BM25, reciprocal-rank fusion,
   CARC/RARC exact-code matching, intent-aware source routing, decisive-term reranking, and Serper only
   below `RAG_THRESHOLD` (default `0.70`). Retrieval text stays local.
+- Portable exact NumPy inner-product fallback when endpoint security blocks the native FAISS library;
+  the same normalized vectors and reranking pipeline remain in use.
 - Boilerplate, bibliography, and revision-history chunks are excluded from LCD coverage answers; the
   original scope notice and PDF page provenance remain in the selected model context.
 - A new sequential Crew, agents, tasks, LLM adapter, and usage ledger for every ticket.

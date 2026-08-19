@@ -13,6 +13,10 @@ from app import (
     MaskingSession,
     PHIMasker,
     Settings,
+    SupportApplication,
+    QAResult,
+    RetrievalResult,
+    enforce_deterministic_qa,
     safe_finalize,
 )
 
@@ -92,6 +96,25 @@ def test_safe_finalize_fails_closed_on_unknown_privacy_token() -> None:
         safe_finalize("Hello <PERSON_99>", MaskingSession("ticket"), Settings(_env_file=None))
 
 
+def test_safe_finalize_removes_test_prefix_before_member_reference() -> None:
+    session = MaskingSession(
+        "ticket",
+        mapping={
+            "<PERSON_1>": "Alex Morgan",
+            "<MEMBER_ID_1>": "member ID TEST12345",
+        },
+    )
+    reply = safe_finalize(
+        "The professional claim for patient <PERSON_1> with test <MEMBER_ID_1> was denied.",
+        session,
+        Settings(_env_file=None),
+    )
+
+    assert reply == "The professional claim for the patient with the member identifier on file was denied."
+    assert "Alex Morgan" not in reply
+    assert "TEST12345" not in reply
+
+
 def test_mock_audit_log_contains_only_allowlisted_operational_fields(tmp_path) -> None:
     path = tmp_path / "events.jsonl"
     settings = Settings(
@@ -123,5 +146,57 @@ def test_mock_audit_log_contains_only_allowlisted_operational_fields(tmp_path) -
         "estimated_cost_usd",
         "duration_seconds",
         "error_code",
+        "channel",
+        "contact_reference",
+        "channel_message_id",
     }
     assert not ({"subject", "sender", "content", "reply", "phi_mapping"} & set(record))
+
+
+def test_contact_reference_is_stable_and_does_not_contain_address() -> None:
+    settings = Settings(_env_file=None, audit_pseudonym_key="synthetic-test-secret")
+    application = SupportApplication.__new__(SupportApplication)
+    application.settings = settings
+
+    first = application._contact_reference("Customer@Example.com")
+    second = application._contact_reference("customer@example.com")
+
+    assert first == second
+    assert first.startswith("email-hmac:")
+    assert "customer" not in first
+    assert "example.com" not in first
+
+
+def test_n563_release_gate_requires_patient_non_liability_statement() -> None:
+    qa = QAResult(
+        approved=True,
+        score=1.0,
+        issues=[],
+        revised_reply="Hello, N563 means the required notice is missing. Medical Billing Support Team",
+    )
+    retrieval = RetrievalResult(
+        source="hybrid",
+        confidence=0.9,
+        context="N563: Missing required advance notice. The patient is not liable for payment.",
+    )
+
+    checked = enforce_deterministic_qa(qa, retrieval)
+
+    assert checked.approved is False
+    assert checked.score == 0.0
+    assert any("non-liability" in issue for issue in checked.issues)
+
+
+def test_failed_qa_cannot_be_manually_overridden() -> None:
+    application = SupportApplication.__new__(SupportApplication)
+    application.settings = Settings(_env_file=None, auto_approve=False)
+    qa = QAResult(
+        approved=False,
+        score=0.0,
+        issues=["Synthetic release-blocking issue"],
+        revised_reply="Hello. Medical Billing Support Team",
+    )
+
+    approved = asyncio.run(application._human_approval("safe-ticket", qa.revised_reply, qa))
+
+    assert approved is False
