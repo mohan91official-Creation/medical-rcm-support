@@ -46,6 +46,7 @@ class GmailSettings(BaseSettings):
     gmail_max_messages: int = Field(default=3, ge=1, le=10)
     gmail_processed_label: str = "RCM-Processed"
     gmail_rejected_label: str = "RCM-Rejected"
+    gmail_pending_label: str = "RCM-Pending-Review"
 
 
 class GmailEnvelope(BaseModel):
@@ -251,7 +252,7 @@ class GmailGateway:
         return str(created["id"])
 
 
-async def process_inbox(dry_run: bool) -> int:
+async def process_inbox(dry_run: bool, watch: bool = False, interval_seconds: int = 60) -> int:
     gmail_settings = GmailSettings()
     app_settings = Settings()
     if app_settings.auto_approve:
@@ -260,73 +261,119 @@ async def process_inbox(dry_run: bool) -> int:
     gateway = GmailGateway(gmail_settings)
     await asyncio.to_thread(gateway.authenticate)
     support_address = await asyncio.to_thread(gateway.verify_account)
-    message_ids = await asyncio.to_thread(gateway.unread_message_ids)
-    if not message_ids:
-        print(f'No unread messages found with subject prefix "{gmail_settings.gmail_subject_prefix}".')
-        return 0
-
     support_app = SupportApplication(app_settings)
-    sent = 0
-    for message_id in message_ids:
-        try:
-            envelope = await asyncio.to_thread(gateway.read_envelope, message_id, support_address)
-            payload = EmailInput(
-                subject=envelope.subject,
-                sender=envelope.sender,
-                time=envelope.received_at,
-                content=envelope.content,
-                channel="gmail",
-                channel_message_id=envelope.message_id,
+    total_sent = 0
+    while True:
+        message_ids = await asyncio.to_thread(gateway.unread_message_ids)
+        if not message_ids:
+            print(
+                f'No unread messages found with subject prefix "{gmail_settings.gmail_subject_prefix}".'
             )
-            result: TicketResult = (await support_app.process_batch([payload]))[0]
-            if result.status == "rejected":
+        for message_id in message_ids:
+            try:
+                envelope = await asyncio.to_thread(gateway.read_envelope, message_id, support_address)
+                payload = EmailInput(
+                    subject=envelope.subject,
+                    sender=envelope.sender,
+                    time=envelope.received_at,
+                    content=envelope.content,
+                    channel="gmail",
+                    channel_message_id=envelope.message_id,
+                )
+                result: TicketResult = (await support_app.process_batch([payload]))[0]
+                if result.status == "rejected":
+                    await asyncio.to_thread(
+                        gateway.label_message,
+                        envelope.message_id,
+                        gmail_settings.gmail_rejected_label,
+                        True,
+                    )
+                    print(f"Ticket {result.ticket_id} rejected safely; no email was sent.")
+                    continue
+                if result.status != "completed" or not result.human_approved or not result.final_reply:
+                    await asyncio.to_thread(
+                        gateway.label_message,
+                        envelope.message_id,
+                        gmail_settings.gmail_pending_label,
+                        True,
+                    )
+                    print(
+                        f"Ticket {result.ticket_id} was not approved; message labeled for review and unsent."
+                    )
+                    continue
+                if dry_run:
+                    print(f"DRY RUN: approved reply for ticket {result.ticket_id}; no email was sent.")
+                    continue
+                confirmation = await asyncio.to_thread(
+                    input,
+                    f"Send the approved reply to {envelope.sender}? [y/N]: ",
+                )
+                if confirmation.strip().lower() not in {"y", "yes"}:
+                    await asyncio.to_thread(
+                        gateway.label_message,
+                        envelope.message_id,
+                        gmail_settings.gmail_pending_label,
+                        True,
+                    )
+                    print("Send cancelled; message labeled for review and left unsent.")
+                    continue
+                await asyncio.to_thread(gateway.send_reply, envelope, result.final_reply)
                 await asyncio.to_thread(
                     gateway.label_message,
                     envelope.message_id,
-                    gmail_settings.gmail_rejected_label,
+                    gmail_settings.gmail_processed_label,
                     True,
                 )
-                print(f"Ticket {result.ticket_id} rejected safely; no email was sent.")
-                continue
-            if result.status != "completed" or not result.human_approved or not result.final_reply:
-                print(f"Ticket {result.ticket_id} was not approved; message remains unread and unsent.")
-                continue
-            if dry_run:
-                print(f"DRY RUN: approved reply for ticket {result.ticket_id}; no email was sent.")
-                continue
-            confirmation = await asyncio.to_thread(
-                input,
-                f"Send the approved reply to {envelope.sender}? [y/N]: ",
-            )
-            if confirmation.strip().lower() not in {"y", "yes"}:
-                print("Send cancelled; message remains unread.")
-                continue
-            await asyncio.to_thread(gateway.send_reply, envelope, result.final_reply)
-            await asyncio.to_thread(
-                gateway.label_message,
-                envelope.message_id,
-                gmail_settings.gmail_processed_label,
-                True,
-            )
-            sent += 1
-            print(f"Reply sent for ticket {result.ticket_id}; original message labeled as processed.")
-        except (HttpError, OSError, ValueError, PermissionError) as exc:
-            logging.getLogger(__name__).error(
-                "Gmail message %s failed safely (%s)", message_id, type(exc).__name__
-            )
-    return sent
+                total_sent += 1
+                print(
+                    f"Reply sent for ticket {result.ticket_id}; original message labeled as processed."
+                )
+            except (HttpError, OSError, ValueError, PermissionError) as exc:
+                logging.getLogger(__name__).error(
+                    "Gmail message %s failed safely (%s)", message_id, type(exc).__name__
+                )
+        if not watch:
+            return total_sent
+        print(
+            f"Watching Gmail; next check in {interval_seconds} seconds. Press Ctrl+C to stop."
+        )
+        await asyncio.sleep(interval_seconds)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Process test-prefixed Gmail messages once.")
+    parser = argparse.ArgumentParser(description="Process or continuously watch test-prefixed Gmail messages.")
     parser.add_argument(
         "--send",
         action="store_true",
         help="Allow sending after application approval and a second explicit confirmation.",
     )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Keep watching Gmail until Ctrl+C is pressed.",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        help="Seconds between inbox checks in watch mode; minimum 30.",
+    )
     args = parser.parse_args()
-    count = asyncio.run(process_inbox(dry_run=not args.send))
-    print(f"Gmail workflow complete. Replies sent: {count}")
+    if args.watch and not args.send:
+        parser.error("--watch requires --send to avoid repeatedly processing the same dry-run message")
+    if args.interval < 30:
+        parser.error("--interval must be at least 30 seconds")
+    try:
+        count = asyncio.run(
+            process_inbox(
+                dry_run=not args.send,
+                watch=args.watch,
+                interval_seconds=args.interval,
+            )
+        )
+        print(f"Gmail workflow complete. Replies sent: {count}")
+    except KeyboardInterrupt:
+        print("Gmail watch stopped safely.")
 
 
 if __name__ == "__main__":

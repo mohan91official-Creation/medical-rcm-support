@@ -18,6 +18,18 @@ Audit sinks never store the customer email address. When `AUDIT_PSEUDONYM_KEY` i
 a stable keyed HMAC contact reference and an opaque Gmail message ID so authorized operators can
 correlate events without exposing the address in Sheets.
 
+For a deadline-friendly local demonstration, keep an interactive watcher running:
+
+```powershell
+python gmail_workflow.py --watch --send --interval 60
+```
+
+It checks once per minute while the terminal remains open. Every send still requires a passing QA gate,
+human approval, and a separate recipient confirmation. Rejected or unapproved messages are labeled and
+removed from the unread queue to prevent repeated model calls. Stop the watcher with `Ctrl+C`. This is a
+local demo mode, not a durable 24/7 production service; Gmail push notifications, Pub/Sub, a queue, and a
+deployed approval UI remain the recommended production architecture.
+
 > **Important:** This project demonstrates engineering controls; it does not make a deployment HIPAA
 > compliant and is not legal, medical, coding, or reimbursement advice. A covered entity or business
 > associate still needs contracts/BAAs, a documented risk analysis, policies, workforce training,
