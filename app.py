@@ -663,7 +663,7 @@ class Retriever:
         dense_scores, dense_indices = self.vector_index.search(dense_query, candidate_k)
         dense_by_index = {
             int(index): float(score)
-            for index, score in zip(dense_indices[0], dense_scores[0])
+            for index, score in zip(dense_indices[0], dense_scores[0], strict=True)
             if index >= 0
         }
         lexical_scores = self.bm25.scores(query_tokens)

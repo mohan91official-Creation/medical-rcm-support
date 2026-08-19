@@ -1,5 +1,7 @@
 # Secure CrewAI Medical Billing / RCM Support
 
+[![Quality Gate](https://github.com/mohan91official-Creation/medical-rcm-support/actions/workflows/ci.yml/badge.svg)](https://github.com/mohan91official-Creation/medical-rcm-support/actions/workflows/ci.yml)
+
 An enterprise-oriented reference project for processing US medical-billing support emails with CrewAI,
 LangChain, Pydantic v2, local hybrid retrieval, optional Serper search, LangSmith observability, and Google
 Sheets lifecycle metrics.
@@ -95,11 +97,17 @@ or traces. The raw-to-token mapping remains in a ticket-local in-memory object a
 .
 ├── app.py
 ├── requirements.txt
+├── requirements-dev.txt
 ├── .env.example
 ├── .gitignore
 ├── README.md
 ├── evaluate_retrieval.py
+├── pyproject.toml
 ├── pyrefly.toml
+├── tests/
+│   ├── test_security.py
+│   └── test_retrieval.py
+├── .github/workflows/ci.yml
 ├── evaluation/
 │   ├── retrieval_cases.json
 │   └── retrieval_report.json
@@ -160,6 +168,25 @@ Precision@3, forbidden-source contamination, threshold pass rate, and the best t
 The command exits unsuccessfully if a required source is missed, a forbidden source leaks into the top
 results, or the top score fails the configured threshold. Add reviewed cases to
 `evaluation/retrieval_cases.json` whenever the knowledge base or supported workflow changes.
+
+## Automated quality gate
+
+Install the developer-only tools and run the same checks used by GitHub Actions:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m py_compile app.py evaluate_retrieval.py
+python -m ruff check .
+python -m pytest -q
+python evaluate_retrieval.py --tune
+```
+
+The tests exercise prompt-injection rejection, out-of-domain rejection, RCM acceptance, ticket-local PHI
+masking, fail-closed privacy tokens, safe reply formatting, allowlisted audit logging, exact CARC/RARC
+routing, and LCD page prioritization. They are fully offline and require no provider keys. The CI workflow
+uses read-only repository permissions, disables tracing and CrewAI telemetry, and never receives `.env` or
+service-account credentials. GitHub recommends `setup-python` for consistent Python workflows; this project
+uses the current `actions/checkout@v7` and `actions/setup-python@v7` releases.
 
 The out-of-domain/injection demo ticket is rejected without an LLM call. Accepted tickets require an
 OpenAI key. With `AUTO_APPROVE=true`, QA approves only scores of at least `0.80`; set it to `false` for an
