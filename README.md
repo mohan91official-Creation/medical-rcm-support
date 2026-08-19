@@ -6,6 +6,9 @@ An enterprise-oriented reference project for processing US medical-billing suppo
 LangChain, Pydantic v2, local hybrid retrieval, optional Serper search, LangSmith observability, and Google
 Sheets lifecycle metrics.
 
+**Buildathon shortcuts:** [5-minute demo guide](DEMO_GUIDE.md) · [Security policy](SECURITY.md) ·
+[Automated quality gate](https://github.com/mohan91official-Creation/medical-rcm-support/actions/workflows/ci.yml)
+
 > **Important:** This project demonstrates engineering controls; it does not make a deployment HIPAA
 > compliant and is not legal, medical, coding, or reimbursement advice. A covered entity or business
 > associate still needs contracts/BAAs, a documented risk analysis, policies, workforce training,
