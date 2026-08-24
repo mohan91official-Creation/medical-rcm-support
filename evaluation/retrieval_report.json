@@ -2,11 +2,11 @@
   "objective": 0.9556,
   "recommended_weights": {
     "semantic": 0.3,
-    "bm25": 0.3,
+    "bm25": 0.26,
     "rrf": 0.15,
     "exact": 0.15,
     "route": 0.1,
-    "focus": 0.1
+    "focus": 0.14
   },
   "cases": [
     {
@@ -16,7 +16,7 @@
       "precision_at_3": 1.0,
       "forbidden_rate": 0.0,
       "threshold_passed": true,
-      "top_score": 1.0,
+      "top_score": 0.9954,
       "top_sources": [
         "internal:-",
         "carc:-"
@@ -29,7 +29,7 @@
       "precision_at_3": 1.0,
       "forbidden_rate": 0.0,
       "threshold_passed": true,
-      "top_score": 0.8821,
+      "top_score": 0.7559,
       "top_sources": [
         "carc:-"
       ]
@@ -41,7 +41,7 @@
       "precision_at_3": 1.0,
       "forbidden_rate": 0.0,
       "threshold_passed": true,
-      "top_score": 0.8679,
+      "top_score": 0.7409,
       "top_sources": [
         "rarc:-",
         "rarc:-"
@@ -51,28 +51,28 @@
       "case_id": "lcd_screening",
       "hit_at_3": 1.0,
       "reciprocal_rank": 1.0,
-      "precision_at_3": 0.6666666666666666,
+      "precision_at_3": 0.3333333333333333,
       "forbidden_rate": 0.0,
       "threshold_passed": true,
-      "top_score": 0.7648,
+      "top_score": 0.7013,
       "top_sources": [
         "lcd:7",
-        "lcd:7",
-        "lcd:1"
+        "lcd:1",
+        "lcd:12"
       ]
     },
     {
       "case_id": "lcd_indications",
       "hit_at_3": 1.0,
       "reciprocal_rank": 1.0,
-      "precision_at_3": 0.6666666666666666,
+      "precision_at_3": 1.0,
       "forbidden_rate": 0.0,
       "threshold_passed": true,
-      "top_score": 0.7914,
+      "top_score": 0.748,
       "top_sources": [
         "lcd:3",
         "lcd:5",
-        "lcd:6"
+        "lcd:4"
       ]
     },
     {
@@ -82,7 +82,7 @@
       "precision_at_3": 0.3333333333333333,
       "forbidden_rate": 0.0,
       "threshold_passed": true,
-      "top_score": 0.9731,
+      "top_score": 0.927,
       "top_sources": [
         "internal:-",
         "internal:-",

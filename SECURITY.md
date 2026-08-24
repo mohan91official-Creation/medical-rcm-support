@@ -45,3 +45,13 @@ private networking and egress controls, immutable auditing, retention/deletion p
 response, content governance, continuous evaluation, and compliance approval.
 
 The safeguards in this repository reduce risk but do not establish compliance by themselves.
+
+## Known transitive dependency advisory
+
+CrewAI currently installs ChromaDB 1.1.x transitively. ChromaDB 1.0.0 and later are affected by
+[CVE-2026-45829](https://github.com/advisories/GHSA-f4j7-r4q5-qw2c), a pre-authentication code-injection
+issue in the Chroma server API, and no patched release is currently listed. This project does not import
+ChromaDB, start a Chroma server, or expose its API; local retrieval uses FAISS (or the NumPy fallback),
+and CrewAI is configured with memory and cache disabled. Do not add or expose a Chroma server. Monitor the
+advisory and upgrade CrewAI/ChromaDB as soon as a compatible patched release is available.
+

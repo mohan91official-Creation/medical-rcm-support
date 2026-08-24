@@ -21,7 +21,7 @@ WEIGHT_PRESETS = [
     {"semantic": 0.30, "bm25": 0.30, "rrf": 0.15, "exact": 0.15, "route": 0.10, "focus": 0.10},
     {"semantic": 0.25, "bm25": 0.35, "rrf": 0.15, "exact": 0.15, "route": 0.10, "focus": 0.10},
     {"semantic": 0.25, "bm25": 0.30, "rrf": 0.15, "exact": 0.20, "route": 0.10, "focus": 0.10},
-    {"semantic": 0.30, "bm25": 0.25, "rrf": 0.15, "exact": 0.15, "route": 0.10, "focus": 0.15},
+    {"semantic": 0.30, "bm25": 0.26, "rrf": 0.15, "exact": 0.15, "route": 0.10, "focus": 0.14},
     {"semantic": 0.20, "bm25": 0.40, "rrf": 0.15, "exact": 0.15, "route": 0.10, "focus": 0.10},
 ]
 
@@ -89,8 +89,17 @@ def main() -> None:
     parser.add_argument("--tune", action="store_true", help="compare safe weight presets")
     args = parser.parse_args()
     cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
-    retriever = Retriever(Settings(), ROOT / "knowledge_base")
-    presets = WEIGHT_PRESETS if args.tune else WEIGHT_PRESETS[:1]
+    settings = Settings()
+    retriever = Retriever(settings, ROOT / "knowledge_base")
+    configured_weights = {
+        "semantic": settings.semantic_weight,
+        "bm25": settings.bm25_weight,
+        "rrf": settings.rrf_weight,
+        "exact": settings.exact_code_weight,
+        "route": settings.source_route_weight,
+        "focus": settings.focus_term_weight,
+    }
+    presets = WEIGHT_PRESETS if args.tune else [configured_weights]
     evaluated = [(weights, *evaluate(retriever, cases, weights)) for weights in presets]
     weights, objective, case_results = max(evaluated, key=lambda row: row[1])
     report = {
@@ -112,3 +121,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

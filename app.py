@@ -68,11 +68,11 @@ class Settings(BaseSettings):
     retrieval_candidate_k: int = Field(default=16, ge=4, le=50)
     embedding_model: str = "en_core_web_lg"
     semantic_weight: float = Field(default=0.30, ge=0, le=1)
-    bm25_weight: float = Field(default=0.30, ge=0, le=1)
+    bm25_weight: float = Field(default=0.26, ge=0, le=1)
     rrf_weight: float = Field(default=0.15, ge=0, le=1)
     exact_code_weight: float = Field(default=0.15, ge=0, le=1)
     source_route_weight: float = Field(default=0.10, ge=0, le=1)
-    focus_term_weight: float = Field(default=0.10, ge=0, le=1)
+    focus_term_weight: float = Field(default=0.14, ge=0, le=1)
     max_concurrency: int = Field(default=5, ge=1, le=50)
     auto_approve: bool = True
     reidentify_person_names: bool = False
@@ -1342,3 +1342,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+

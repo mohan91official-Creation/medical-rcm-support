@@ -1,5 +1,7 @@
 .env
-.venv/
+.env.*
+!.env.example
+.venv*/
 venv/
 __pycache__/
 *.py[cod]
@@ -11,11 +13,18 @@ htmlcov/
 runtime/
 *.log
 credentials*.json
+client_secret*.json
+*-credentials.json
 service-account*.json
 gmail-oauth*.json
 gmail-token*.json
 credentials.json
 token.json
+*.pem
+*.key
+*.p12
+*.pfx
 .DS_Store
 .idea/
 .vscode/
+

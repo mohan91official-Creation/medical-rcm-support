@@ -201,7 +201,7 @@ Install the developer-only tools and run the same checks used by GitHub Actions:
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m py_compile app.py evaluate_retrieval.py
+python -m py_compile app.py evaluate_retrieval.py gmail_workflow.py
 python -m ruff check .
 python -m pytest -q
 python evaluate_retrieval.py --tune
@@ -212,7 +212,7 @@ masking, fail-closed privacy tokens, safe reply formatting, allowlisted audit lo
 routing, and LCD page prioritization. They are fully offline and require no provider keys. The CI workflow
 uses read-only repository permissions, disables tracing and CrewAI telemetry, and never receives `.env` or
 service-account credentials. GitHub recommends `setup-python` for consistent Python workflows; this project
-uses the current `actions/checkout@v7` and `actions/setup-python@v7` releases.
+pins the reviewed `actions/checkout` and `actions/setup-python` releases by full commit SHA.
 
 The out-of-domain/injection demo ticket is rejected without an LLM call. Accepted tickets require an
 OpenAI key. With `AUTO_APPROVE=true`, QA approves only scores of at least `0.80`; set it to `false` for an
@@ -337,3 +337,4 @@ git push -u origin main
 For an existing repository, do not re-run `git init`; create a feature branch and open a pull request.
 Enable secret scanning, dependency updates, protected branches, required reviews, signed releases, and CI
 checks before accepting contributions.
+
